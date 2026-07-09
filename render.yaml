@@ -1,0 +1,25 @@
+# Render Blueprint — provisions the dashboard and a free Postgres database,
+# and wires them together automatically.
+#
+# When you connect this repo to Render as a "Blueprint", Render reads this file
+# and creates both services. You only have to paste in your FINNHUB_KEY.
+
+databases:
+  - name: semidash-db
+    plan: free
+    # Render keeps free Postgres for 30 days; you can create a fresh one after.
+
+services:
+  - type: web
+    name: semidash
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: FINNHUB_KEY
+        sync: false          # you enter this in the dashboard (kept secret)
+      - key: DATABASE_URL
+        fromDatabase:
+          name: semidash-db
+          property: connectionString
