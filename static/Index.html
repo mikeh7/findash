@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>SemiDash — semiconductor news terminal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg:        #0a0e14;   /* deep wafer black-blue */
+    --panel:     #10161f;
+    --panel-2:   #141c28;
+    --line:      #1e2a3a;
+    --line-2:    #2a3a4f;
+    --ink:       #e7edf4;
+    --ink-dim:   #8b9bb0;
+    --ink-faint: #56677d;
+    --up:        #34d399;   /* green movement */
+    --down:      #f2607d;   /* red movement */
+    --accent:    #5ed0ff;   /* etched-silicon cyan, the one bold color */
+    --accent-dim:#2a6f8f;
+    --read-veil: rgba(10,14,20,0.55);
+    --radius: 3px;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Space Grotesk", system-ui, sans-serif;
+    font-size: 14px;
+    /* faint die-grid, the wafer motif */
+    background-image:
+      linear-gradient(var(--line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--line) 1px, transparent 1px);
+    background-size: 44px 44px;
+    background-position: -1px -1px;
+  }
+  #root { height: 100vh; }
+  .mono { font-family: "IBM Plex Mono", monospace; }
+
+  .app { display: grid; grid-template-columns: 380px 1fr; height: 100vh; }
+  @media (max-width: 820px) {
+    .app { grid-template-columns: 1fr; }
+    .detail.empty { display: none; }
+  }
+
+  /* ---- Sidebar ---- */
+  .side {
+    display: flex; flex-direction: column;
+    border-right: 1px solid var(--line-2);
+    background: linear-gradient(180deg, rgba(16,22,31,0.96), rgba(10,14,20,0.96));
+    backdrop-filter: blur(2px);
+    min-height: 0;
+  }
+  .brand {
+    padding: 16px 18px 12px;
+    border-bottom: 1px solid var(--line);
+    display: flex; align-items: baseline; gap: 10px;
+  }
+  .brand h1 {
+    font-size: 17px; font-weight: 700; letter-spacing: -0.02em; margin: 0;
+  }
+  .brand h1 .lit { color: var(--accent); }
+  .brand .sub {
+    font-size: 10.5px; color: var(--ink-faint); letter-spacing: 0.14em;
+    text-transform: uppercase; margin-left: auto;
+  }
+
+  .toolbar {
+    display: flex; gap: 8px; align-items: center;
+    padding: 10px 14px; border-bottom: 1px solid var(--line);
+  }
+  .btn {
+    font-family: "IBM Plex Mono", monospace; font-size: 11px;
+    background: var(--panel-2); color: var(--ink-dim);
+    border: 1px solid var(--line-2); border-radius: var(--radius);
+    padding: 5px 10px; cursor: pointer; letter-spacing: 0.04em;
+    transition: all .15s ease;
+  }
+  .btn:hover { color: var(--ink); border-color: var(--accent-dim); }
+  .btn.on { color: var(--bg); background: var(--accent); border-color: var(--accent); font-weight: 600; }
+  .count { margin-left: auto; font-size: 11px; color: var(--ink-faint); }
+  .count b { color: var(--ink-dim); }
+
+  /* filter panel */
+  .filter {
+    border-bottom: 1px solid var(--line);
+    max-height: 42vh; overflow: auto; padding: 6px 8px 10px;
+  }
+  .filter .frow {
+    display: flex; gap: 8px; padding: 6px 8px;
+    align-items: center; cursor: pointer; border-radius: var(--radius);
+  }
+  .filter .frow:hover { background: var(--panel-2); }
+  .filter .frow input { accent-color: var(--accent); }
+  .filter .sym { font-family: "IBM Plex Mono", monospace; font-weight: 600; font-size: 12px; width: 52px; }
+  .filter .nm { color: var(--ink-dim); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .filter .fbulk { display: flex; gap: 6px; padding: 6px; position: sticky; top: 0; background: var(--panel); z-index: 1; }
+
+  /* tiles */
+  .tiles { flex: 1; overflow: auto; min-height: 0; }
+  .tile {
+    position: relative;
+    display: block; width: 100%; text-align: left;
+    background: var(--panel);
+    border: none; border-bottom: 1px solid var(--line);
+    padding: 12px 14px 13px; cursor: pointer;
+    transition: background .15s ease;
+  }
+  .tile:hover { background: var(--panel-2); }
+  .tile.active { background: var(--panel-2); box-shadow: inset 3px 0 0 var(--accent); }
+  .tile.read { opacity: 0.42; }
+  .tile.read::after {
+    content: "READ"; position: absolute; top: 11px; right: 12px;
+    font-family: "IBM Plex Mono", monospace; font-size: 8.5px;
+    letter-spacing: 0.14em; color: var(--ink-faint);
+    border: 1px solid var(--line-2); padding: 1px 4px; border-radius: 2px;
+  }
+
+  .tile .top { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .chip {
+    font-family: "IBM Plex Mono", monospace; font-size: 11px; font-weight: 600;
+    padding: 2px 6px; border-radius: 2px; letter-spacing: 0.02em;
+    border: 1px solid var(--line-2); color: var(--ink);
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .chip .mv { font-weight: 600; }
+  .chip.up   { border-color: rgba(52,211,153,0.4); }
+  .chip.up .mv { color: var(--up); }
+  .chip.down { border-color: rgba(242,96,125,0.4); }
+  .chip.down .mv { color: var(--down); }
+  .chip .closed { color: var(--ink-faint); font-size: 10px; }
+  .time { margin-left: auto; font-family: "IBM Plex Mono", monospace; font-size: 10.5px; color: var(--ink-faint); }
+
+  .tile h3 { margin: 0 0 5px; font-size: 13.5px; font-weight: 600; line-height: 1.3; letter-spacing: -0.01em; }
+  .tile p { margin: 0; font-size: 12px; line-height: 1.45; color: var(--ink-dim);
+            display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .tile .src { margin-top: 6px; font-size: 10px; color: var(--ink-faint); font-family: "IBM Plex Mono", monospace; }
+
+  /* ---- Detail ---- */
+  .detail { min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
+  .detail.empty {
+    align-items: center; justify-content: center; color: var(--ink-faint);
+    text-align: center; padding: 40px;
+  }
+  .detail.empty .wafer {
+    width: 120px; height: 120px; margin-bottom: 20px; opacity: 0.5;
+    border: 1px solid var(--line-2); border-radius: 50%;
+    background-image: linear-gradient(var(--line-2) 1px, transparent 1px),
+                      linear-gradient(90deg, var(--line-2) 1px, transparent 1px);
+    background-size: 14px 14px;
+    -webkit-mask: radial-gradient(circle at center, #000 62%, transparent 66%);
+            mask: radial-gradient(circle at center, #000 62%, transparent 66%);
+  }
+  .reader-head {
+    padding: 16px 26px 12px; border-bottom: 1px solid var(--line);
+    display: flex; align-items: flex-start; gap: 14px;
+    background: var(--panel);
+  }
+  .reader-head .meta { flex: 1; min-width: 0; }
+  .reader-head h2 { margin: 0 0 6px; font-size: 19px; letter-spacing: -0.02em; line-height: 1.25; }
+  .reader-head .line { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 11px; color: var(--ink-faint); font-family: "IBM Plex Mono", monospace; }
+  .reader-head a.orig { color: var(--accent); text-decoration: none; border: 1px solid var(--accent-dim); padding: 5px 10px; border-radius: var(--radius); font-family: "IBM Plex Mono", monospace; font-size: 11px; white-space: nowrap; }
+  .reader-head a.orig:hover { background: rgba(94,208,255,0.1); }
+
+  .reader {
+    overflow: auto; padding: 22px 26px 60px; line-height: 1.62;
+    max-width: 760px;
+  }
+  .reader h1, .reader h2, .reader h3 { letter-spacing: -0.01em; line-height: 1.3; margin: 22px 0 8px; }
+  .reader h1 { font-size: 20px; } .reader h2 { font-size: 17px; } .reader h3 { font-size: 15px; }
+  .reader p { margin: 0 0 14px; color: var(--ink); font-size: 14.5px; }
+  .reader .err { color: var(--down); }
+  .reader .endcap {
+    margin-top: 30px; padding-top: 16px; border-top: 1px dashed var(--line-2);
+    font-family: "IBM Plex Mono", monospace; font-size: 11px; color: var(--ink-faint);
+    letter-spacing: 0.1em; text-align: center;
+  }
+  .loading { padding: 30px 26px; color: var(--ink-faint); font-family: "IBM Plex Mono", monospace; font-size: 12px; }
+
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+<script type="text/babel">
+const { useState, useEffect, useMemo, useRef, useCallback } = React;
+
+function fmtTime(ts) {
+  const d = new Date(ts * 1000);
+  const now = Date.now();
+  const diff = (now - d.getTime()) / 1000;
+  if (diff < 3600) return `${Math.max(1, Math.floor(diff / 60))}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" }) +
+         " " + d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+}
+
+function MoveChip({ a }) {
+  const open = a.market_open === 1;
+  const pct = a.change_pct;
+  const dir = pct == null ? "" : pct >= 0 ? "up" : "down";
+  return (
+    <span className={`chip ${dir}`}>
+      <span>{a.ticker}</span>
+      {pct == null ? (
+        <span className="closed">—</span>
+      ) : open ? (
+        <span className="mv">{pct >= 0 ? "+" : ""}{pct.toFixed(2)}%</span>
+      ) : (
+        <span className="closed mono">{a.prev_close != null ? `$${a.prev_close.toFixed(2)} cls` : "closed"}</span>
+      )}
+    </span>
+  );
+}
+
+function Tile({ a, active, onOpen }) {
+  return (
+    <button className={`tile ${active ? "active" : ""} ${a.read ? "read" : ""}`} onClick={() => onOpen(a)}>
+      <div className="top">
+        <MoveChip a={a} />
+        <span className="time">{fmtTime(a.published)}</span>
+      </div>
+      <h3>{a.headline}</h3>
+      <p>{a.summary || "No summary available."}</p>
+      <div className="src">{a.source || "—"}</div>
+    </button>
+  );
+}
+
+function Reader({ article, onRead }) {
+  const ref = useRef(null);
+  const firedRef = useRef(false);
+  firedRef.current = false; // reset per article
+
+  const checkBottom = useCallback((el) => {
+    if (!el || firedRef.current || article.read) return;
+    const nearBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 40;
+    if (nearBottom) { firedRef.current = true; onRead(article.id); }
+  }, [article, onRead]);
+
+  useEffect(() => {
+    // If content is short enough that there's nothing to scroll, mark read.
+    const el = ref.current;
+    if (el && el.scrollHeight <= el.clientHeight + 40 && !article.read) {
+      firedRef.current = true; onRead(article.id);
+    }
+  }, [article, onRead]);
+
+  return (
+    <>
+      <div className="reader-head">
+        <div className="meta">
+          <h2>{article.headline}</h2>
+          <div className="line">
+            <MoveChip a={article} />
+            <span>{article.company}</span>
+            <span>·</span>
+            <span>{fmtTime(article.published)}</span>
+            <span>·</span>
+            <span>{article.source}</span>
+          </div>
+        </div>
+        <a className="orig" href={article.url} target="_blank" rel="noopener noreferrer">Open original ↗</a>
+      </div>
+      <div className="reader" ref={ref} onScroll={(e) => checkBottom(e.target)}>
+        {article.fetched_body
+          ? <div dangerouslySetInnerHTML={{ __html: article.fetched_body }} />
+          : <div className="loading">Fetching article…</div>}
+        {article.fetched_body && <div className="endcap">— end of article · marked read —</div>}
+      </div>
+    </>
+  );
+}
+
+function App() {
+  const [tickers, setTickers] = useState([]);
+  const [selected, setSelected] = useState(null); // null = all
+  const [showFilter, setShowFilter] = useState(false);
+  const [articles, setArticles] = useState([]);
+  const [current, setCurrent] = useState(null);
+  const [loadingArt, setLoadingArt] = useState(false);
+
+  const loadArticles = useCallback(async () => {
+    const qs = selected && selected.size ? `?tickers=${[...selected].join(",")}` : "";
+    const r = await fetch(`/api/articles${qs}`);
+    setArticles(await r.json());
+  }, [selected]);
+
+  useEffect(() => { fetch("/api/tickers").then(r => r.json()).then(setTickers); }, []);
+  useEffect(() => { loadArticles(); }, [loadArticles]);
+
+  const openArticle = useCallback(async (a) => {
+    setCurrent(a); setLoadingArt(true);
+    const r = await fetch(`/api/article/${a.id}`);
+    const full = await r.json();
+    setCurrent({ ...a, ...full });
+    setLoadingArt(false);
+  }, []);
+
+  const markRead = useCallback(async (id) => {
+    await fetch(`/api/article/${id}/read`, { method: "POST" });
+    setArticles(prev => prev.map(x => x.id === id ? { ...x, read: 1 } : x));
+    setCurrent(prev => prev && prev.id === id ? { ...prev, read: 1 } : prev);
+  }, []);
+
+  const toggle = (sym) => {
+    setSelected(prev => {
+      const next = new Set(prev || tickers.map(t => t.symbol));
+      next.has(sym) ? next.delete(sym) : next.add(sym);
+      return next;
+    });
+  };
+  const allOn = () => setSelected(null);
+  const noneOn = () => setSelected(new Set());
+
+  const unread = articles.filter(a => !a.read).length;
+  const activeSet = selected; // for checkbox state
+
+  return (
+    <div className="app">
+      <aside className="side">
+        <div className="brand">
+          <h1>Semi<span className="lit">Dash</span></h1>
+          <span className="sub">SOXX · SMH</span>
+        </div>
+
+        <div className="toolbar">
+          <button className={`btn ${showFilter ? "on" : ""}`} onClick={() => setShowFilter(s => !s)}>
+            ⚲ Filter{selected ? ` · ${selected.size}` : ""}
+          </button>
+          <button className="btn" onClick={loadArticles}>↻ Reload</button>
+          <span className="count"><b>{unread}</b> unread / {articles.length}</span>
+        </div>
+
+        {showFilter && (
+          <div className="filter">
+            <div className="fbulk">
+              <button className="btn" onClick={allOn}>All</button>
+              <button className="btn" onClick={noneOn}>None</button>
+            </div>
+            {tickers.map(t => {
+              const on = !activeSet || activeSet.has(t.symbol);
+              return (
+                <label className="frow" key={t.symbol}>
+                  <input type="checkbox" checked={on} onChange={() => toggle(t.symbol)} />
+                  <span className="sym">{t.symbol}</span>
+                  <span className="nm">{t.name}</span>
+                </label>
+              );
+            })}
+          </div>
+        )}
+
+        <div className="tiles">
+          {articles.length === 0 && (
+            <div className="loading">No articles in the last 7 days. Try ↻ Reload, or check the API key.</div>
+          )}
+          {articles.map(a => (
+            <Tile key={a.id} a={a} active={current && current.id === a.id} onOpen={openArticle} />
+          ))}
+        </div>
+      </aside>
+
+      <main className={`detail ${current ? "" : "empty"}`}>
+        {current ? (
+          loadingArt && !current.fetched_body
+            ? <Reader article={current} onRead={markRead} />
+            : <Reader article={current} onRead={markRead} />
+        ) : (
+          <>
+            <div className="wafer"></div>
+            <div>Select an article to read it here.<br /><span className="mono" style={{fontSize:"11px", color:"var(--ink-faint)"}}>Scroll to the end and the tile greys out.</span></div>
+          </>
+        )}
+      </main>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
